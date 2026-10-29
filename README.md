@@ -54,15 +54,17 @@ subrepo(name = "js", dep = ":js", plugin = True)
 
 | Rule | Does |
 |---|---|
-| `pnpm_lock` | Creates `///<pkg>/<name>_store`, with one target per package version that downloads it and checks its sha512. Also creates one node_modules subrepo per importer, registered with `package_root` set to the importer's directory, so its outputs appear at `<importer>/node_modules/...` in a consumer's sandbox. Each has a public target per direct dependency, plus `:everything`. |
+| `pnpm_lock` | Creates `///<pkg>/<name>_store`, with one target per package version that downloads it and checks its sha512. Also creates `///<pkg>/<name>`, which lays out every importer's node_modules over one shared store. It's registered with `package_root` set to the lockfile's directory, so its outputs appear at `<importer>/node_modules/...` in a consumer's sandbox. Each importer's package in it has a public target per direct dependency, plus `:everything`. |
+| `js_library` | Sources plus the libraries and npm packages they import. Builds see the closure through `exported_deps`, tests through `runtime_deps`, like Bazel's runfiles. |
 | `node_genrule` | A genrule run from the package directory, with the configured node as `$NODE`. |
 | `vite_build` | Runs `vite build` with node_modules supplied by deps. |
+| `vitest_test` | Runs one folder's vitest suites from the workspace root (`--dir=<folder>`), writing the JUnit report to Please's results file. |
 
 ## Config
 
 | Key | Default | Meaning |
 |---|---|---|
-| `NodeTool` | `//third_party/node:node\|node` | The node binary, sha256-pinned per host platform |
+| `NodeTool` | `//third_party/node` | The node executable, from a sha256-pinned distribution per host platform |
 | `GeneratorTools` | `//tools:tools` | The TypeScript generators, run by node's type stripping |
 | `NpmRegistry` | `https://registry.npmjs.org` | Used when the lockfile names no tarball URL |
 

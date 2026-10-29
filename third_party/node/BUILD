@@ -17,12 +17,13 @@ remote_file(
     out = "node.tar.gz",
 )
 
+# node is one self-contained executable; the rest of the distribution (npm, headers,
+# docs) would only grow every action's inputs.
 genrule(
     name = "node",
     srcs = [":dist"],
     outs = ["node"],
-    cmd = "mkdir $OUT && tar -xzf $SRCS -C $OUT --strip-components=1",
+    cmd = f'tar -xzf "$SRCS" -O "node-v{_VERSION}-{_platform}/bin/node" > "$OUT" && chmod +x "$OUT"',
     binary = True,
-    entry_points = {"node": "node/bin/node"},
     visibility = ["PUBLIC"],
 )

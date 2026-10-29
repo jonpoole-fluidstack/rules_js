@@ -6,7 +6,7 @@ Name = js
 
 [PluginConfig "node_tool"]
 ConfigKey = NodeTool
-DefaultValue = //third_party/node:node|node
+DefaultValue = //third_party/node
 Inherit = true
 Help = A build label for the node binary that runs the generators and the build rules.
 

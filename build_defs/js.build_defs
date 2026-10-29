@@ -1,3 +1,9 @@
+# Remotely Please gives tool paths relative to the action root, so they stop
+# resolving once a rule changes directory; this pins $NODE (and node's temp dir)
+# to absolute paths first.
+_NODE_ENV = 'case "$TOOLS_NODE" in /*) NODE="$TOOLS_NODE";; *) NODE="$PWD/$TOOLS_NODE";; esac; export NODE TMPDIR="$PWD/_node_tmp" && mkdir -p "$TMPDIR"'
+
+
 def _run_tool(script:str):
     return f"$TOOLS_NODE --experimental-strip-types --no-warnings $TOOLS_GEN/{script}"
 
@@ -61,7 +67,7 @@ def node_genrule(name:str, cmd:str, srcs:list|dict=[], deps:list=[], outs:list=[
         outs = outs,
         env = env,
         tools = {"node": [CONFIG.JS.NODE_TOOL]},
-        cmd = f'export NODE="$TOOLS_NODE" && cd {pkg} && {cmd}',
+        cmd = f"{_NODE_ENV} && cd {pkg} && {cmd}",
         visibility = visibility,
     )
 
@@ -75,5 +81,52 @@ def vite_build(name:str, srcs:list, deps:list=[], out:str="dist", env:dict={}, v
         outs = [out],
         env = env,
         cmd = '"$NODE" node_modules/vite/bin/vite.js build --emptyOutDir --outDir "$OUT"',
+        visibility = visibility,
+    )
+
+
+def js_library(name:str, srcs:list=[], deps:list=[], test_only:bool=False, visibility:list=None):
+    """Source files and the libraries and npm packages they import.
+
+    Builds see the whole closure through exported_deps, and tests through runtime_deps,
+    as Bazel's runfiles would carry it.
+    """
+    return filegroup(
+        name = name,
+        srcs = srcs,
+        binary = True,
+        exported_deps = deps,
+        runtime_deps = deps,
+        test_only = test_only,
+        visibility = visibility,
+    )
+
+
+def vitest_test(name:str, root:str, dir:str, deps:list, config:str="vitest.config.ts", labels:list=[], visibility:list=None):
+    """Runs the vitest suites in one folder.
+
+    vitest runs from the workspace root, where its config sits, and --dir limits it
+    to this folder's suites. The config is expected to send its JUnit report to
+    XML_OUTPUT_FILE and its cache to TEST_TMPDIR, as it would under Bazel.
+
+    Args:
+      name (str): Name of the test.
+      root (str): The workspace directory vitest runs from, e.g. the pnpm_lock package.
+      dir (str): The folder whose suites to run, relative to root.
+      deps (list): Libraries holding the suites, the code they import, and the runner's config.
+      config (str): The vitest config, relative to root.
+    """
+    return gentest(
+        name = name,
+        data = deps,
+        test_tools = {"node": [CONFIG.JS.NODE_TOOL]},
+        test_cmd = " && ".join([
+            _NODE_ENV,
+            'export XML_OUTPUT_FILE="$RESULTS_FILE" TEST_TMPDIR="$PWD/_vitest_tmp"',
+            'mkdir -p "$TEST_TMPDIR"',
+            f"cd {root}",
+            f'"$NODE" node_modules/vitest/vitest.mjs run --config={config} --dir={dir}',
+        ]),
+        labels = labels + ["vitest"],
         visibility = visibility,
     )
