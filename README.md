@@ -33,8 +33,22 @@ vite_build(
 ```
 
 `plugin_repo` downloads a GitHub archive anonymously, so it works only while this
-repository is public. Otherwise, check the repository out inside the host repo and
-use `subrepo(name = "js", path = "<checkout>", plugin = True)`.
+repository is public.
+
+To build against a local checkout while changing the rules, build the plugin
+subrepo from the checkout's files. `system_srcs` accepts absolute paths; `srcs`
+does not.
+
+```python
+build_rule(
+    name = "js",
+    system_srcs = [f"{CONFIG.RULES_JS_CHECKOUT}/{f}" for f in [".plzconfig", "build_defs", "third_party", "tools"]],
+    outs = ["js"],
+    cmd = 'mkdir "$OUT" && cp -R $SRCS "$OUT"/',
+    _subrepo = True,
+)
+subrepo(name = "js", dep = ":js", plugin = True)
+```
 
 ## Rules
 
@@ -54,10 +68,18 @@ use `subrepo(name = "js", path = "<checkout>", plugin = True)`.
 
 ## How node_modules is built
 
-- **Hoisted, like npm.** A package nests under its parent only on a version
-  conflict. Nested packages are copied into their top-level owner, so no target's
-  output sits inside another's: Please replaces a directory output wholesale when
-  it writes it.
+- **pnpm's layout.** Each lockfile snapshot (a version with its peers resolved)
+  gets its own `node_modules/_store/<snapshot>/node_modules/<pkg>`, with its
+  dependencies as sibling symlinks. `node_modules/<dep>` is a symlink into the store.
+  - A package and its peers resolve to one instance. A hoisted, copied layout broke
+    orval: ajv-errors and the ajv it extends ended up as two copies.
+  - No target's output sits inside another's. Please replaces a directory output
+    wholesale when it writes it.
+- **Hidden hoisting.** `node_modules/_store/node_modules/<pkg>` links one version of
+  every package, as pnpm's `.pnpm/node_modules` does, so a package that imports
+  something it doesn't declare (tiptap-markdown imports `@tiptap/pm`) still
+  resolves. A direct dependency's target carries these links only for its own
+  closure; `:everything` carries all of them.
 - **Workspace packages (`link:`)** are symlinks to their directories, as pnpm makes
   them, so their files resolve imports from their own importer's node_modules.
 - **sha512 is checked by the unpack step.** `remote_file` verifies only sha1,

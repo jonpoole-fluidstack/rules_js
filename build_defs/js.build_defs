@@ -3,16 +3,17 @@ def _run_tool(script:str):
 
 
 def pnpm_lock(name:str, lockfile:str, importers:list=["."], registry:str=""):
-    """Turns a pnpm lockfile into subrepos.
+    """Turns a pnpm lockfile into two subrepos.
 
     ///<pkg>/<name>_store holds one target per package version that downloads and
-    integrity-checks its tarball. Each importer gets its own subrepo that lays its
-    dependencies out as node_modules under the importer's directory, as pnpm does:
-    ///<pkg>/<name> for ".", ///<pkg>/<name>_<importer> for the others. Each has one
-    public target per direct dependency (e.g. ///<pkg>/<name>//:vite) and :everything.
+    integrity-checks its tarball. ///<pkg>/<name> lays every importer's dependencies
+    out as node_modules beside the importer, sharing one store as pnpm does. Its
+    package for each importer directory has one public target per direct dependency,
+    plus :everything: ///<pkg>/<name>//:vite for ".", and
+    ///<pkg>/<name>//packages/ui:react for packages/ui.
 
     Args:
-      name (str): Name of the node_modules subrepo for the "." importer; the others are named after it.
+      name (str): Name of the node_modules subrepo.
       lockfile (str): The pnpm-lock.yaml (lockfile version 9).
       importers (list): The workspace directories, relative to this package, to lay out node_modules for.
       registry (str): Registry to download from when the lockfile names no tarball. Defaults to the NpmRegistry config.
@@ -31,25 +32,19 @@ def pnpm_lock(name:str, lockfile:str, importers:list=["."], registry:str=""):
     subrepo(name = store, dep = store_gen)
 
     pkg = package_name()
-    for importer in importers:
-        if importer == ".":
-            repo = name
-            root = pkg
-        else:
-            repo = name + "_" + importer.replace("/", "_").replace("-", "_")
-            root = f"{pkg}/{importer}"
-        link_gen = build_rule(
-            name = tag(repo, "link"),
-            srcs = [lockfile],
-            tools = tools,
-            cmd = " ".join([
-                _run_tool("node_modules_link.ts") + f" --lock $SRCS --importer {importer}",
-                f"--os {CONFIG.OS} --cpu {CONFIG.ARCH} --store ///{pkg}/{store} --out $OUT",
-            ]),
-            outs = [repo],
-            _subrepo = True,
-        )
-        subrepo(name = repo, dep = link_gen, package_root = root)
+    importer_list = ",".join(importers)
+    link_gen = build_rule(
+        name = tag(name, "link"),
+        srcs = [lockfile],
+        tools = tools,
+        cmd = " ".join([
+            _run_tool("node_modules_link.ts") + f" --lock $SRCS --importers {importer_list}",
+            f"--os {CONFIG.OS} --cpu {CONFIG.ARCH} --store ///{pkg}/{store} --out $OUT",
+        ]),
+        outs = [name],
+        _subrepo = True,
+    )
+    subrepo(name = name, dep = link_gen, package_root = pkg)
 
 
 def node_genrule(name:str, cmd:str, srcs:list|dict=[], deps:list=[], outs:list=[], env:dict={}, visibility:list=None):
