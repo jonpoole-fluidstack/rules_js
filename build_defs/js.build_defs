@@ -1,0 +1,84 @@
+def _run_tool(script:str):
+    return f"$TOOLS_NODE --experimental-strip-types --no-warnings $TOOLS_GEN/{script}"
+
+
+def pnpm_lock(name:str, lockfile:str, importers:list=["."], registry:str=""):
+    """Turns a pnpm lockfile into subrepos.
+
+    ///<pkg>/<name>_store holds one target per package version that downloads and
+    integrity-checks its tarball. Each importer gets its own subrepo that lays its
+    dependencies out as node_modules under the importer's directory, as pnpm does:
+    ///<pkg>/<name> for ".", ///<pkg>/<name>_<importer> for the others. Each has one
+    public target per direct dependency (e.g. ///<pkg>/<name>//:vite) and :everything.
+
+    Args:
+      name (str): Name of the node_modules subrepo for the "." importer; the others are named after it.
+      lockfile (str): The pnpm-lock.yaml (lockfile version 9).
+      importers (list): The workspace directories, relative to this package, to lay out node_modules for.
+      registry (str): Registry to download from when the lockfile names no tarball. Defaults to the NpmRegistry config.
+    """
+    registry = registry or CONFIG.JS.NPM_REGISTRY
+    tools = {"node": [CONFIG.JS.NODE_TOOL], "gen": [CONFIG.JS.GENERATOR_TOOLS]}
+    store = f"{name}_store"
+    store_gen = build_rule(
+        name = tag(name, "store"),
+        srcs = [lockfile],
+        tools = tools,
+        cmd = _run_tool("lock_file_download.ts") + f" --lock $SRCS --registry {registry} --out $OUT",
+        outs = [store],
+        _subrepo = True,
+    )
+    subrepo(name = store, dep = store_gen)
+
+    pkg = package_name()
+    for importer in importers:
+        if importer == ".":
+            repo = name
+            root = pkg
+        else:
+            repo = name + "_" + importer.replace("/", "_").replace("-", "_")
+            root = f"{pkg}/{importer}"
+        link_gen = build_rule(
+            name = tag(repo, "link"),
+            srcs = [lockfile],
+            tools = tools,
+            cmd = " ".join([
+                _run_tool("node_modules_link.ts") + f" --lock $SRCS --importer {importer}",
+                f"--os {CONFIG.OS} --cpu {CONFIG.ARCH} --store ///{pkg}/{store} --out $OUT",
+            ]),
+            outs = [repo],
+            _subrepo = True,
+        )
+        subrepo(name = repo, dep = link_gen, package_root = root)
+
+
+def node_genrule(name:str, cmd:str, srcs:list|dict=[], deps:list=[], outs:list=[], env:dict={}, visibility:list=None):
+    """A genrule that runs from this package's directory with the configured node as $NODE.
+
+    node_modules comes from deps on the pnpm_lock subrepos, whose outputs land in
+    this package's node_modules in the sandbox.
+    """
+    pkg = package_name()
+    return genrule(
+        name = name,
+        srcs = srcs,
+        deps = deps,
+        outs = outs,
+        env = env,
+        tools = {"node": [CONFIG.JS.NODE_TOOL]},
+        cmd = f'export NODE="$TOOLS_NODE" && cd {pkg} && {cmd}',
+        visibility = visibility,
+    )
+
+
+def vite_build(name:str, srcs:list, deps:list=[], out:str="dist", env:dict={}, visibility:list=None):
+    """Runs `vite build` in this package."""
+    return node_genrule(
+        name = name,
+        srcs = srcs,
+        deps = deps,
+        outs = [out],
+        env = env,
+        cmd = '"$NODE" node_modules/vite/bin/vite.js build --emptyOutDir --outDir "$OUT"',
+        visibility = visibility,
+    )

@@ -1,0 +1,22 @@
+[Please]
+Version = >=17.31.2
+
+[PluginDefinition]
+Name = js
+
+[PluginConfig "node_tool"]
+ConfigKey = NodeTool
+DefaultValue = //third_party/node:node|node
+Inherit = true
+Help = A build label for the node binary that runs the generators and the build rules.
+
+[PluginConfig "generator_tools"]
+ConfigKey = GeneratorTools
+DefaultValue = //tools:tools
+Help = A build label for the directory holding the lockfile generators.
+
+[PluginConfig "npm_registry"]
+ConfigKey = NpmRegistry
+DefaultValue = https://registry.npmjs.org
+Inherit = true
+Help = The npm registry tarballs are downloaded from when the lockfile names no tarball URL.
