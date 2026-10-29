@@ -8,6 +8,52 @@ def _run_tool(script:str):
     return f"$TOOLS_NODE --experimental-strip-types --no-warnings $TOOLS_GEN/{script}"
 
 
+def node_toolchain(name:str, version:str="", url:str|dict="", hashes:list=[], labels:list=[], visibility:list=["PUBLIC"]):
+    """Downloads node and outputs its executable as :<name>, for the NodeTool config:
+
+        [Plugin "js"]
+        NodeTool = //third_party/node:<name>
+
+    Only bin/node is kept: it is self-contained, and the rest of the distribution
+    (npm, headers, docs) would only grow every action's inputs.
+
+    The download follows the build's platform (CONFIG.OS/ARCH, which --arch sets),
+    so a build for remote Linux workers gets a Linux node.
+
+    Args:
+      name (str): Name of the rule.
+      version (str): The node version to download from nodejs.org. Either provide version or url, but not both.
+      url (str | dict): The URL of a node distribution tarball, or a dict mapping node's platform
+                        names (e.g. linux-x64, darwin-arm64) to URLs.
+      hashes (list): Accepted hashes of the downloaded archive, e.g. one sha256 per platform.
+      labels (list): Labels for this rule.
+      visibility (list): Visibility specification. Defaults to public.
+    """
+    if bool(version) == bool(url):
+        fail("Either version or url should be provided but not both")
+    platform = CONFIG.OS + "-" + {"amd64": "x64"}.get(CONFIG.ARCH, CONFIG.ARCH)
+    if version:
+        dist_url = f"https://nodejs.org/dist/v{version}/node-v{version}-{platform}.tar.gz"
+    else:
+        dist_url = url if isinstance(url, str) else url[platform]
+
+    download = remote_file(
+        name = name,
+        _tag = "download",
+        url = dist_url,
+        hashes = hashes,
+    )
+    return genrule(
+        name = name,
+        srcs = [download],
+        outs = [name],
+        cmd = 'tar -xzf "$SRCS" && mv */bin/node "$OUT"',
+        binary = True,
+        labels = labels,
+        visibility = visibility,
+    )
+
+
 def pnpm_lock(name:str, lockfile:str, importers:list=["."], registry:str=""):
     """Turns a pnpm lockfile into two subrepos.
 

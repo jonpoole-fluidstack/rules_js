@@ -54,6 +54,7 @@ subrepo(name = "js", dep = ":js", plugin = True)
 
 | Rule | Does |
 |---|---|
+| `node_toolchain` | Downloads a node distribution (by `version`, or `url`) for the build's platform and outputs only its `bin/node`. Point `NodeTool` at it to use your own. |
 | `pnpm_lock` | Creates `///<pkg>/<name>_store`, with one target per package version that downloads it and checks its sha512. Also creates `///<pkg>/<name>`, which lays out every importer's node_modules over one shared store. It's registered with `package_root` set to the lockfile's directory, so its outputs appear at `<importer>/node_modules/...` in a consumer's sandbox. Each importer's package in it has a public target per direct dependency, plus `:everything`. |
 | `js_library` | Sources plus the libraries and npm packages they import. Builds see the closure through `exported_deps`, tests through `runtime_deps`, like Bazel's runfiles. |
 | `node_genrule` | A genrule run from the package directory, with the configured node as `$NODE`. |
@@ -64,7 +65,7 @@ subrepo(name = "js", dep = ":js", plugin = True)
 
 | Key | Default | Meaning |
 |---|---|---|
-| `NodeTool` | `//third_party/node` | The node executable, from a sha256-pinned distribution per host platform |
+| `NodeTool` | `//third_party/node` | The node executable: this repo's `node_toolchain` (22.17.0), unless you declare your own |
 | `GeneratorTools` | `//tools:tools` | The TypeScript generators, run by node's type stripping |
 | `NpmRegistry` | `https://registry.npmjs.org` | Used when the lockfile names no tarball URL |
 
